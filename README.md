@@ -1,4 +1,8 @@
-# Problem
+# Media Processor
+
+This is just a little, personal project for me to manage my photos and home videos across multiple services.
+
+## Problem
 
 Amazon is photo storage source of truth.
 
@@ -14,7 +18,7 @@ Nice to have: same when a photo is deleted from Plex.
 Nicer to have? Same when a photo is deleted anywhere? With confirmation?
 Same for videos, excluding removal from Amazon or Google because they don't live there permanently.
 
-# Solution
+## Solution
 
 Have to start by cataloging existing files initially.
 
@@ -75,7 +79,7 @@ Missing part of the picture here... Multiple possible states for a file:
 Everything needs to reach "fully synced" before I can start doing anything with it, I think. It's hard to know from a
 snapshot of the system state what the right thing to do is.
 
-# Solution 2
+## Solution 2
 
 Maybe start conservative, and try to identify "fully synced" state. Only do anything with files that have reached that
 state. How to track state? Need event sourcing? I have to know that it's been fully synced before, regardless of current
@@ -127,7 +131,7 @@ So three event types for event stream:
 - file deleted: file has been deleted from an authoritative location (history scanner found that a file that used to
   exist has gone away)
 
-## Location scanner
+### Location scanner
 
 - Has its own sqlite db that remembers files it's seen before - path and checksum at least, should be able to determine
   new file vs move. Db can be deleted and rebuilt from event stream!
@@ -135,12 +139,12 @@ So three event types for event stream:
 - Periodically scans its location and emits events for new or moved files. Old file entries can TTL if not seen
   again for X days or the last time everything was reconciled. Need a central, coordinator db/process for this.
 
-## History scanner
+### History scanner
 
 I think this can only work from an established history, meaning a concrete db? Tho still the db must be able to be
 rebuilt from event stream.
 
-# On further thought...
+## On further thought...
 
 In Dropbox, if a file is added to one place, it's added to all, and if it's deleted from one place, it's deleted from
 all. It also doesn't matter one bit whether the file has been synced to everything yet, or even whether all the storage
@@ -164,7 +168,7 @@ to the db. Similar for any event: verify event matches current+historical state,
 
 In case of any mismatch, send a notification to manually resolve. In the future, automatic resolution may come along.
 
-## Problems
+### Problems
 
 This isn't perfect event sourcing, as a create followed by update means the system can't verify the create. The file
 already exists with the updated content. Hmm... Well, this would only (in normal operation) emit some kind of warning
@@ -183,13 +187,13 @@ Is there a difference between a system create and a user create? I.e. a file is 
 it there, but then it syncs to another location, and that's a system create. Only user actions should be propagated to
 other locations. The syncing is a method of propagation, sort of.1
 
-# On further, further thought...
+## On further, further thought...
 
 Each location is independent. There's no central event stream. Each location... is an event stream? Knows where to find
 other locations and how to query their streams? Can build a linear sequence of events from all the streams by
 reconciling clock differences when comparing event timestamps???
 
-# Random notes
+## Random notes
 
 Talking about rebuilding db's from event streams, that implies the events persist forever. Can I do that? What if I have
 to TTL events? What happens when I get a "changed" or "deleted" event for a file whose "created" event has TTL'd out?
