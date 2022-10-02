@@ -27,8 +27,8 @@ fun() {
     debug "stmt: $stmt"
     attempts=0
     # When I query the db while this is running, it can cause locking problems. If the insert fails, sleep and retry.
-    while ! sqlite test.db "$stmt" &> /dev/null; do
-      attempts=$((attempts+1))
+    while ! sqlite test.db "$stmt" &>/dev/null; do
+      attempts=$((attempts + 1))
       if [ $attempts -ge 2 ]; then
         echo "Insert attempt $attempts failed, retrying..."
         sleep 1
@@ -39,5 +39,5 @@ fun() {
 
 while read -r line; do
   fun "$line"
-# Run for every path that's not marked deleted
+  # Run for every path that's not marked deleted
 done < <(sqlite test.db "select distinct file_path from file_events where file_path not in (select file_path from file_events where event_type = 'delete');")

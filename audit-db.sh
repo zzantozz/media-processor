@@ -10,7 +10,7 @@ violations=0
 res="$(sqlite test.db "select * from file_events where event_type not in ('create', 'update', 'delete');")"
 [ -n "$res" ] && {
   echo -e " *** Here are the rows with an invalid 'event_type':\n$res"
-  violations=$((violations+1))
+  violations=$((violations + 1))
 }
 
 echo "Found $violations areas with violations"
