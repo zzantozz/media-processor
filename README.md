@@ -204,3 +204,5 @@ Can I do event streams in sqlite? Kafka seems like a big task.
 I should do Kafka cuz I need to learn it!
 
 If these management scripts overlap at all with the scripts syncing content around, stuff will go sideways.
+
+Editing a photo in the amazon UI doesn't change the original. It creates a new one.

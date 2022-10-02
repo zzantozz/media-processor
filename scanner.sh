@@ -23,13 +23,26 @@ current="$(sqlite test.db "$find_current_stmt")"
 IFS='|' read -r -a current_fields <<< "$current"
 debug "current state: ${current_fields[*]}"
 if [ -n "$current" ]; then
-  debug "file path already exists. what next?"
-  debug "event_type: ${current_fields[0]}"
-  debug "sha1: ${current_fields[1]}"
+  debug "state: file path is tracked"
+  event_type="${current_fields[0]}"
+  debug "event_type: $event_type"
+  last_sha1="${current_fields[1]}"
+  debug "sha1: $last_sha1"
+  if [ "$event_type" = "delete" ]; then
+    debug "state: deleted file is re-created"
+    stmt="insert into file_events(event_type, file_path, time, storage_location, sha1) "
+    stmt+="values('create', '$path', $now, 'Amazon', '$sha1');"
+  # Make sure not to mark a newly re-created file as an update if it was just marked a create! A new file is a new file,
+  # even if it happens to be named the same as a previously deleted one.
+  elif [ ! "$last_sha1" = "$sha1" ]; then
+    debug "state: file has been updated"
+    stmt="insert into file_events(event_type, file_path, time, storage_location, sha1) "
+    stmt+="values('update', '$path', $now, 'Amazon', '$sha1');"
+  fi
 else
-  debug "file path not tracked, adding create event"
+  debug "state: file path not tracked, adding create event"
   stmt="insert into file_events(event_type, file_path, time, storage_location, sha1) "
-  stmt+="values('created', '$path', $now, 'Amazon', '$sha1');"
+  stmt+="values('create', '$path', $now, 'Amazon', '$sha1');"
 fi
 if [ -n "$stmt" ]; then
   debug "stmt: $stmt"
