@@ -18,7 +18,7 @@ analyze_existing_actual_file() {
   debug "db-safe path: $path"
   # Does this file exist yet?
   find_current_stmt="select event_type, sha1 from file_events where file_path = '$path' order by time desc limit 1;"
-  current="$(sqlite test.db "$find_current_stmt")"
+  current="$(sqlite3 test.db "$find_current_stmt")"
   IFS='|' read -r -a current_fields <<<"$current"
   debug "current state: ${current_fields[*]}"
   if [ -n "$current" ]; then
@@ -65,7 +65,7 @@ analyze_existing_db_file() {
   else
     debug "state: file was deleted"
     find_current_stmt="select sha1 from file_events where file_path = '$path' order by time desc limit 1;"
-    current="$(sqlite test.db "$find_current_stmt")"
+    current="$(sqlite3 test.db "$find_current_stmt")"
     debug "last sha1: $current"
     stmt="insert into file_events(event_type, file_path, time, storage_location, sha1) "
     stmt+="values('delete', '$path', $time, 'Amazon', '$current');"

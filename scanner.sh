@@ -20,4 +20,4 @@ find "$AMAZON_DIR" -type f -print0 | xargs -0 -I {} bash -c "analyze_existing_ac
 # For all files that should exist according to the db, check if they still exist.
 while read -r line; do
   analyze_existing_db_file "$line" "$now"
-done < <(sqlite test.db "select distinct file_path from file_events where file_path not in (select file_path from file_events where event_type = 'delete');")
+done < <(sqlite3 test.db "select distinct file_path from file_events where file_path not in (select file_path from file_events where event_type = 'delete');")

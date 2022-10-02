@@ -12,7 +12,7 @@ db_execute_until_success() {
   stmt="$2"
   debug "stmt: $stmt"
   attempts=0
-  while ! sqlite "$db_name" "$stmt" &>/dev/null; do
+  while ! sqlite3 "$db_name" "$stmt" &>/dev/null; do
     attempts=$((attempts + 1))
     if [ $attempts -ge 2 ]; then
       echo "Executing db statement attempt $attempts failed, retrying..."
