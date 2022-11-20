@@ -28,18 +28,18 @@ analyze_existing_actual_file() {
     last_sha1="${current_fields[1]}"
     debug "sha1: $last_sha1"
     if [ "$event_type" = "delete" ]; then
-      debug "state: deleted file is re-created"
+      debug "action: mark file (re-)created: $file_path"
       stmt="insert into file_events(event_type, file_path, time, storage_location, sha1) "
       stmt+="values('create', '$path', $time, 'Amazon', '$sha1');"
     # Make sure not to mark a newly re-created file as an update if it was just marked a create! A new file is a new file,
     # even if it happens to be named the same as a previously deleted one.
     elif [ ! "$last_sha1" = "$sha1" ]; then
-      debug "state: file has been updated"
+      debug "action: mark file updated: $file_path"
       stmt="insert into file_events(event_type, file_path, time, storage_location, sha1) "
       stmt+="values('update', '$path', $time, 'Amazon', '$sha1');"
     fi
   else
-    debug "state: file path not tracked, adding create event"
+    debug "action: mark file created: $file_path"
     stmt="insert into file_events(event_type, file_path, time, storage_location, sha1) "
     stmt+="values('create', '$path', $time, 'Amazon', '$sha1');"
   fi
@@ -63,7 +63,7 @@ analyze_existing_db_file() {
   if [ -f "$1" ]; then
     debug "state: file still exists"
   else
-    debug "state: file was deleted"
+    debug "action: mark file deleted: $file_path"
     find_current_stmt="select sha1 from file_events where file_path = '$path' order by time desc limit 1;"
     current="$(sqlite3 test.db "$find_current_stmt")"
     debug "last sha1: $current"

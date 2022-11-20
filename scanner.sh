@@ -3,7 +3,7 @@
 set -e
 
 debug() {
-  [ "$DEBUG" = true ] && echo "$1"
+  [ -z "$DEBUG" ] || echo "$1"
 }
 export -f debug
 
