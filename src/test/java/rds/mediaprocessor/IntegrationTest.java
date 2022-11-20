@@ -114,9 +114,11 @@ public class IntegrationTest {
         MainBuildCatalog.buildCatalog(location1, location1Db, settings);
         MainBuildCatalog.buildCatalog(location2, location2Db, settings);
 
-        // When
+        // When I update a file on the left hand side and re-catalog it
         FileUtils.writeStringToFile(testFile11.toFile(), "v2", "UTF-8");
         MainBuildCatalog.buildCatalog(location1, location1Db, settings);
+
+        // Then the difference is noted
         List<MainReconcileThings.Diff> diffs = MainReconcileThings.reconcileCatalogs(location1Db, location2Db);
         assertThat(diffs, hasSize(1));
         MainReconcileThings.Diff diff = diffs.get(0);
@@ -134,9 +136,11 @@ public class IntegrationTest {
         MainBuildCatalog.buildCatalog(location1, location1Db, settings);
         MainBuildCatalog.buildCatalog(location2, location2Db, settings);
 
-        // When
+        // When I update a file on the right hand side and re-catalog it
         FileUtils.writeStringToFile(testFile21.toFile(), "v2", "UTF-8");
         MainBuildCatalog.buildCatalog(location2, location2Db, settings);
+
+        // Then the difference is noted
         List<MainReconcileThings.Diff> diffs = MainReconcileThings.reconcileCatalogs(location1Db, location2Db);
         assertThat(diffs, hasSize(1));
         MainReconcileThings.Diff diff = diffs.get(0);
