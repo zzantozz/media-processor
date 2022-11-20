@@ -111,35 +111,35 @@ public class MainBuildCatalog {
                         return new FileInfo(relPath.toString(), sha1(path));
                     })
                     .forEach(info -> {
-                        try (Connection connection = dataSource.getConnection()) {
-                            try (PreparedStatement findExistingStatement = connection.prepareStatement(
-                                    "select event_type, sha1 from file_events where file_path = ? order by time desc limit 1;")) {
-                                findExistingStatement.setString(1, info.relPath);
-                                ResultSet resultSet = findExistingStatement.executeQuery();
-                                FileEvent fileEvent = null;
-                                if (resultSet.next()) {
-                                    String eventType = resultSet.getString(FileEventTable.event_type);
-                                    String sha1 = resultSet.getString(FileEventTable.sha1);
-                                    if (EventTypes.delete.equals(eventType)) {
-                                        System.out.println(info.relPath + " is re-created");
-                                        fileEvent = new FileEvent(EventTypes.create, info);
-                                    } else if (!sha1.equals(info.sha1Hex)) {
-                                        System.out.println(info.relPath + " is updated");
-                                        fileEvent = new FileEvent(EventTypes.update, info);
-                                    } else {
-//                                        System.out.println(info.relPath + " is seen before and unchanged");
-                                    }
-                                } else {
-//                                    System.out.println(info.relPath + " is newly discovered");
+                        try (Connection connection = dataSource.getConnection();
+                             PreparedStatement findExistingStatement = connection.prepareStatement(
+                                     "select event_type, sha1 from file_events where file_path = ? order by time desc limit 1;")) {
+                            findExistingStatement.setString(1, info.relPath);
+                            ResultSet resultSet = findExistingStatement.executeQuery();
+                            FileEvent fileEvent = null;
+                            if (resultSet.next()) {
+                                String eventType = resultSet.getString(FileEventTable.event_type);
+                                String sha1 = resultSet.getString(FileEventTable.sha1);
+                                if (EventTypes.delete.equals(eventType)) {
+                                    System.out.println(info.relPath + " is re-created");
                                     fileEvent = new FileEvent(EventTypes.create, info);
+                                } else if (!sha1.equals(info.sha1Hex)) {
+                                    System.out.println(info.relPath + " is updated");
+                                    fileEvent = new FileEvent(EventTypes.update, info);
+                                } else {
+//                                    System.out.println(info.relPath + " is seen before and unchanged");
                                 }
-                                if (fileEvent != null) {
-                                    boolean offer = fileEventBatcher.getQueuedInserts().offer(fileEvent, 10, TimeUnit.SECONDS);
-                                    if (!offer) {
-                                        throw new IllegalStateException("Failed to queue file info!");
-                                    }
-                                    Stats.insertsQueued.incrementAndGet();
+                            } else {
+//                                System.out.println(info.relPath + " is newly discovered");
+                                fileEvent = new FileEvent(EventTypes.create, info);
+                            }
+                            resultSet.close();
+                            if (fileEvent != null) {
+                                boolean offer = fileEventBatcher.getQueuedInserts().offer(fileEvent, 10, TimeUnit.SECONDS);
+                                if (!offer) {
+                                    throw new IllegalStateException("Failed to queue file info!");
                                 }
+                                Stats.insertsQueued.incrementAndGet();
                             }
                         } catch (SQLException e) {
                             throw new IllegalStateException("SQL failure", e);

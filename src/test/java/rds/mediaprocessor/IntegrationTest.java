@@ -71,11 +71,10 @@ public class IntegrationTest {
         FileUtils.writeStringToFile(testFile21.toFile(), "v1", "UTF-8");
         FileUtils.writeStringToFile(testFile22.toFile(), "v1", "UTF-8");
         String initSql = FileUtils.readFileToString(new File("create-schema.sql"), "UTF-8");
-        try (Connection connection1 = DriverManager.getConnection("jdbc:sqlite:" + location1Db)) {
-            try (Connection connection2 = DriverManager.getConnection("jdbc:sqlite:" + location2Db)) {
-                connection1.createStatement().execute(initSql);
-                connection2.createStatement().execute(initSql);
-            }
+        try (Connection connection1 = DriverManager.getConnection("jdbc:sqlite:" + location1Db);
+             Connection connection2 = DriverManager.getConnection("jdbc:sqlite:" + location2Db)) {
+            connection1.createStatement().execute(initSql);
+            connection2.createStatement().execute(initSql);
         }
     }
 
