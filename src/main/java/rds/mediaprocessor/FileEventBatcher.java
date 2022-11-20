@@ -14,6 +14,7 @@ import static rds.mediaprocessor.MainBuildCatalog.DB_BATCH_SIZE;
 
 public class FileEventBatcher implements Runnable {
     private boolean inputsActive = true;
+    private final Connection connection;
     private final Statement txStatement;
     private final PreparedStatement insertStatement;
     private final int queueCapacity = DB_BATCH_SIZE + (DB_BATCH_SIZE / 10);
@@ -25,7 +26,6 @@ public class FileEventBatcher implements Runnable {
         this.insertTimestamp = insertTimestamp;
         queuePollTimeoutMillis = Integer.parseInt(
                 settings.getOrDefault("FileEventBatcher.queuePollTimeoutMillis", "1000"));
-        Connection connection;
         try {
             connection = dataSource.getConnection();
         } catch (SQLException e) {
@@ -105,6 +105,11 @@ public class FileEventBatcher implements Runnable {
                     break;
                 }
             }
+        }
+        try {
+            connection.close();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Error closing connection used for inserts", e);
         }
     }
 

@@ -97,54 +97,56 @@ public class MainReconcileThings {
                 .filter(db -> db.path.equals(catalog2Path))
                 .findFirst()
                 .orElse(new Db("some db", catalog2Path, (s) -> s));
-        final Connection connection1 = DriverManager.getConnection("jdbc:sqlite:" + db1.path);
-        final Connection connection2 = DriverManager.getConnection("jdbc:sqlite:" + db2.path);
-        PreparedStatement findFileInDb2Stmt = connection2.prepareStatement(
-                "select * from file_events where file_path = ? order by time desc limit 1");
-        ResultSet resultSet1 = connection1.createStatement().executeQuery("select * from file_events");
-        final List<Diff> result = new ArrayList<>();
-        while (resultSet1.next()) {
-            String filePath1 = resultSet1.getString(FileEventTable.file_path);
-            String filePath2 = db2.normalizer.apply(filePath1);
-            findFileInDb2Stmt.setString(1, filePath2);
-            ResultSet resultSet2 = findFileInDb2Stmt.executeQuery();
-            String db1FileState = resultSet1.getString(FileEventTable.event_type);
-            String db1FileSha1 = resultSet1.getString((FileEventTable.sha1));
-            if (resultSet2.next()) {
-                String db2FileState = resultSet2.getString(FileEventTable.event_type);
-                String db2FileSha1 = resultSet2.getString((FileEventTable.sha1));
-                Diff diff = new Diff(filePath1,
-                        new Diff.Side(db1FileState, db1FileSha1),
-                        new Diff.Side(db2FileState, db2FileSha1));
-                if (db1FileState.equals(db2FileState)) {
-                    if (db1FileSha1.equals(db2FileSha1)) {
-                        System.out.println("Files are an exact match in both db's - " + filePath2);
+        try (final Connection connection1 = DriverManager.getConnection("jdbc:sqlite:" + db1.path)) {
+            try (final Connection connection2 = DriverManager.getConnection("jdbc:sqlite:" + db2.path)) {
+                PreparedStatement findFileInDb2Stmt = connection2.prepareStatement(
+                        "select * from file_events where file_path = ? order by time desc limit 1");
+                ResultSet resultSet1 = connection1.createStatement().executeQuery("select * from file_events");
+                final List<Diff> result = new ArrayList<>();
+                while (resultSet1.next()) {
+                    String filePath1 = resultSet1.getString(FileEventTable.file_path);
+                    String filePath2 = db2.normalizer.apply(filePath1);
+                    findFileInDb2Stmt.setString(1, filePath2);
+                    ResultSet resultSet2 = findFileInDb2Stmt.executeQuery();
+                    String db1FileState = resultSet1.getString(FileEventTable.event_type);
+                    String db1FileSha1 = resultSet1.getString((FileEventTable.sha1));
+                    if (resultSet2.next()) {
+                        String db2FileState = resultSet2.getString(FileEventTable.event_type);
+                        String db2FileSha1 = resultSet2.getString((FileEventTable.sha1));
+                        Diff diff = new Diff(filePath1,
+                                new Diff.Side(db1FileState, db1FileSha1),
+                                new Diff.Side(db2FileState, db2FileSha1));
+                        if (db1FileState.equals(db2FileState)) {
+                            if (db1FileSha1.equals(db2FileSha1)) {
+                                System.out.println("Files are an exact match in both db's - " + filePath2);
+                            } else {
+                                System.out.println("File checksums don't match - " + filePath2);
+                                result.add(diff);
+                            }
+                        } else if (db1FileState.equals(EventTypes.delete)) {
+                            System.out.println("File should be deleted from " + db2.name + " - " + filePath2);
+                            result.add(diff);
+                        } else if (db2FileState.equals(EventTypes.delete)) {
+                            System.out.println("File should be deleted from " + db1.name + " - " + filePath1);
+                            result.add(diff);
+                        } else if (db1FileState.equals(EventTypes.create)) {
+                            System.out.println("File is updated in " + db2.name + " but not " + db1.name + " - " + filePath1);
+                            result.add(diff);
+                        } else if (db2FileState.equals(EventTypes.create)) {
+                            System.out.println("File is updated in " + db1.name + " but not " + db2.name + " - " + filePath2);
+                            result.add(diff);
+                        } else {
+                            throw new IllegalStateException("Shouldn't be able to get here. What happened?");
+                        }
                     } else {
-                        System.out.println("File checksums don't match - " + filePath2);
-                        result.add(diff);
+//                        System.out.println("File exists in " + db1.name + " but unknown in " + db2.name + " - " + filePath1);
+                        result.add(new Diff(filePath1,
+                                new Diff.Side(db1FileState, db1FileSha1),
+                                new Diff.Side("none", "none")));
                     }
-                } else if (db1FileState.equals(EventTypes.delete)) {
-                    System.out.println("File should be deleted from " + db2.name + " - " + filePath2);
-                    result.add(diff);
-                } else if (db2FileState.equals(EventTypes.delete)) {
-                    System.out.println("File should be deleted from " + db1.name + " - " + filePath1);
-                    result.add(diff);
-                } else if (db1FileState.equals(EventTypes.create)) {
-                    System.out.println("File is updated in " + db2.name + " but not " + db1.name + " - " + filePath1);
-                    result.add(diff);
-                } else if (db2FileState.equals(EventTypes.create)) {
-                    System.out.println("File is updated in " + db1.name + " but not " + db2.name + " - " + filePath2);
-                    result.add(diff);
-                } else {
-                    throw new IllegalStateException("Shouldn't be able to get here. What happened?");
                 }
-            } else {
-//                System.out.println("File exists in " + db1.name + " but unknown in " + db2.name + " - " + filePath1);
-                result.add(new Diff(filePath1,
-                        new Diff.Side(db1FileState, db1FileSha1),
-                        new Diff.Side("none", "none")));
+                return result;
             }
         }
-        return result;
     }
 }

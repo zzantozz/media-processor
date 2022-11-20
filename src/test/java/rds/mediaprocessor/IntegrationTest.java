@@ -80,8 +80,8 @@ public class IntegrationTest {
     }
 
     @AfterEach
-    public void deleteTempDir() {
-        FileUtils.deleteQuietly(tempDirectory.toFile());
+    public void deleteTempDir() throws Exception {
+        FileUtils.forceDelete(tempDirectory.toFile());
     }
 
     @Test
