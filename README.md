@@ -206,3 +206,30 @@ I should do Kafka cuz I need to learn it!
 If these management scripts overlap at all with the scripts syncing content around, stuff will go sideways.
 
 Editing a photo in the amazon UI doesn't change the original. It creates a new one.
+
+Amazon photos backup/sync is wonky. It has weird ideas about things that have been backed up already, especially when
+trying to modify something already added, like fixing a timestamp.
+
+
+# Current state
+
+The shell script version has built a db for the amazon drive dir.
+
+The java version has built a db for the local archive dir.
+
+Now I'm working on comparing the db's to determine actions to take. I decided to take the simple approach of
+pulling together the db's cataloging each photo location and comparing them to each other. Right now, I'm
+focused on just comparing two of them. I'm not sure where to go when I need to compare multiple ways.
+
+Building the db's takes a *long* time. The java version is bottlenecked on disk read speed while reading files and
+calculating checksums. The bash version has that problem, plus it doesn't do sqlite transactions. Before I added
+transactions in java, each row insert took ~200 ms. Now with batching and transactions, it's more like 1 ms.
+
+How to improve performance? Maybe I could do multiple passes: read just names and sizes into the db first, then backfill
+checksums. That's gotta be the longest part. Could also defer to hashdeep, which seems pretty well optimized at
+calculating these things and will spit out file name, size, and checksum for me in a nice, readable format. Oh but
+wait... I ultimately want not just the whole file checksum. I want to checksum the content without metadata. I guess I
+could still use the overall checksum as an initial guard, and only dig deeper when necessary.
+
+I should really test stuff out with databases built from small, sample directories. Could build some integration tests
+around that method.
