@@ -1,7 +1,6 @@
 package rds.mediaprocessor;
 
 import org.apache.commons.io.FileUtils;
-import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,9 +8,10 @@ import org.junit.jupiter.api.Test;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 
@@ -49,11 +49,20 @@ public class IntegrationTest {
     private static final String CHECKSUM_OF_V2 = "5a6df720540c20d95d530d3fd6885511223d5d20";
 
     /**
-     * Settings to use for this test. For one thing, we have to turn timeouts down, like in the batcher, so that the
-     * tests don't take forever to run.
+     * Settings to use for this test. Mainly this is for time-related things that will cause the tests to wait a long
+     * time or fail because they run too fast.
      */
-    private final Map<String, String> settings = Map.of("FileEventBatcher.queuePollTimeoutMillis", "5");
+    private final Map<String, String> settings = Map.of(
+            // The batcher queues db inserts for this long, and it makes the tests run as slow as this timeout is
+            "FileEventBatcher.queuePollTimeoutMillis", "5"
+    );
 
+    /**
+     * Creates an isolated directory for each test to work in. Inside this directory are two subdirectories and two
+     * empty database files that are initialized with the create-schema.sql script. The two subdirectories each have
+     * two, identical files in them, a test that builds a catalog of the two directories and compares them should see
+     * no differences. This provides a baseline from which other tests can be built.
+     */
     @BeforeEach
     public void createTempDir() throws Exception {
         tempDirectory = Files.createTempDirectory("mediaprocessor-it-");
@@ -89,10 +98,18 @@ public class IntegrationTest {
         MainBuildCatalog.buildCatalog(location2, location2Db);
         List<MainReconcileThings.Diff> diffs = MainReconcileThings.reconcileCatalogs(location1Db, location2Db);
         assertThat(diffs, hasSize(0));
+        for (Path db : List.of(location1Db, location2Db)) {
+            try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + db)) {
+                Statement statement = connection.createStatement();
+                ResultSet resultSet = statement.executeQuery("select count(*) from file_events");
+                resultSet.next();
+                assertThat(db + " should have events", resultSet.getInt(1), equalTo(2));
+            }
+        }
     }
 
     @Test
-    void updatingOneFileIsNoticed() throws Exception {
+    void updatingOneFileInLeftDbIsNoticed() throws Exception {
         // Given I've cataloged both locations in their initial states.
         MainBuildCatalog.buildCatalog(location1, location1Db, settings);
         MainBuildCatalog.buildCatalog(location2, location2Db, settings);
@@ -109,5 +126,25 @@ public class IntegrationTest {
         assertThat(diff.lhs.sha1, equalTo(CHECKSUM_OF_V1));
         assertThat(diff.rhs.state, equalTo(EventTypes.create));
         assertThat(diff.rhs.sha1, equalTo(CHECKSUM_OF_V2));
+    }
+
+    @Test
+    void updatingOneFileInRightDbIsNoticed() throws Exception {
+        // Given I've cataloged both locations in their initial states.
+        MainBuildCatalog.buildCatalog(location1, location1Db, settings);
+        MainBuildCatalog.buildCatalog(location2, location2Db, settings);
+
+        // When
+        FileUtils.writeStringToFile(testFile21.toFile(), "v2", "UTF-8");
+        MainBuildCatalog.buildCatalog(location2, location2Db, settings);
+        List<MainReconcileThings.Diff> diffs = MainReconcileThings.reconcileCatalogs(location1Db, location2Db);
+        assertThat(diffs, hasSize(1));
+        MainReconcileThings.Diff diff = diffs.get(0);
+        String relPath = location2.relativize(testFile21).toString();
+        assertThat(diff.path, equalTo(relPath));
+        assertThat(diff.lhs.state, equalTo(EventTypes.create));
+        assertThat(diff.lhs.sha1, equalTo(CHECKSUM_OF_V2));
+        assertThat(diff.rhs.state, equalTo(EventTypes.update));
+        assertThat(diff.rhs.sha1, equalTo(CHECKSUM_OF_V1));
     }
 }
