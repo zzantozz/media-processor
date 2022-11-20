@@ -15,7 +15,8 @@ import static rds.mediaprocessor.MainBuildCatalog.DB_BATCH_SIZE;
 public class FileEventBatcher implements Runnable {
     private boolean inputsActive = true;
     private final Connection connection;
-    private final Statement txStatement;
+    private final PreparedStatement beginTxStatement;
+    private final PreparedStatement endTxStatement;
     private final PreparedStatement insertStatement;
     private final int queueCapacity = DB_BATCH_SIZE + (DB_BATCH_SIZE / 10);
     private final BlockingQueue<MainBuildCatalog.FileEvent> queuedInserts = new LinkedBlockingQueue<>(queueCapacity);
@@ -34,7 +35,8 @@ public class FileEventBatcher implements Runnable {
         try {
             String stmt = "insert into file_events(event_type, file_path, time, storage_location, sha1) " +
                     "values(?, ?, ?, 'Desk archive', ?);";
-            txStatement = connection.createStatement();
+            beginTxStatement = connection.prepareStatement("begin");
+            endTxStatement = connection.prepareStatement("end");
             insertStatement = connection.prepareStatement(stmt);
         } catch (SQLException e) {
             throw new IllegalStateException("Error creating sql statements", e);
@@ -68,7 +70,7 @@ public class FileEventBatcher implements Runnable {
             if (!toHandle.isEmpty()) {
                 long start = System.currentTimeMillis();
                 try {
-                    txStatement.execute("begin");
+                    beginTxStatement.execute();
                 } catch (SQLException e) {
                     throw new IllegalStateException("Failed to start new transaction", e);
                 }
@@ -86,7 +88,7 @@ public class FileEventBatcher implements Runnable {
                 }
                 try {
                     int[] updates = insertStatement.executeBatch();
-                    txStatement.execute("end");
+                    endTxStatement.execute();
 //                            System.out.println("Updates in batch: " + Arrays.stream(updates)
 //                                    .mapToObj(Integer::toString)
 //                                    .collect(Collectors.joining(",")));
