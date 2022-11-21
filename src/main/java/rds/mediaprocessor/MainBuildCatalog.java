@@ -21,7 +21,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import static rds.mediaprocessor.DbNames.*;
-import static rds.mediaprocessor.DbNames.FileEventTable.event_type;
 
 public class MainBuildCatalog {
     public static final int DB_BATCH_SIZE = 200;
@@ -102,75 +101,12 @@ public class MainBuildCatalog {
                     " ***\n";
             System.out.print(report);
         }, 5, 5, TimeUnit.SECONDS);
-        try (Stream<Path> stream = Files.walk(rootDir)) {
-            stream
-//                    .parallel()
-                    .filter(Files::isRegularFile)
-                    .map(path -> {
-                        Path relPath = rootDir.relativize(path);
-                        return new FileInfo(relPath.toString(), sha1(path));
-                    })
-                    .forEach(info -> {
-                        try (Connection connection = dataSource.getConnection();
-                             PreparedStatement findExistingStatement = connection.prepareStatement(
-                                     "select event_type, sha1 from file_events where file_path = ? order by time desc limit 1;")) {
-                            findExistingStatement.setString(1, info.relPath);
-                            ResultSet resultSet = findExistingStatement.executeQuery();
-                            FileEvent fileEvent = null;
-                            if (resultSet.next()) {
-                                String eventType = resultSet.getString(FileEventTable.event_type);
-                                String sha1 = resultSet.getString(FileEventTable.sha1);
-                                if (EventTypes.delete.equals(eventType)) {
-                                    System.out.println(info.relPath + " is re-created");
-                                    fileEvent = new FileEvent(EventTypes.create, info);
-                                } else if (!sha1.equals(info.sha1Hex)) {
-                                    System.out.println(info.relPath + " is updated");
-                                    fileEvent = new FileEvent(EventTypes.update, info);
-                                } else {
-//                                    System.out.println(info.relPath + " is seen before and unchanged");
-                                }
-                            } else {
-//                                System.out.println(info.relPath + " is newly discovered");
-                                fileEvent = new FileEvent(EventTypes.create, info);
-                            }
-                            resultSet.close();
-                            if (fileEvent != null) {
-                                boolean offer = fileEventBatcher.getQueuedInserts().offer(fileEvent, 10, TimeUnit.SECONDS);
-                                if (!offer) {
-                                    throw new IllegalStateException("Failed to queue file info!");
-                                }
-                                Stats.insertsQueued.incrementAndGet();
-                            }
-                        } catch (SQLException e) {
-                            throw new IllegalStateException("SQL failure", e);
-                        } catch (InterruptedException e) {
-                            throw new IllegalStateException("Unexpected interrupt", e);
-                        }
-                    });
-        }
+        new FileSystemScanner(dataSource, fileEventBatcher).scan(rootDir);
         fileEventBatcher.finishUp();
         statsReportingExecutor.shutdownNow();
         if (!ForkJoinPool.commonPool().awaitQuiescence(15, TimeUnit.SECONDS)) {
             System.out.println("Fork join pool didn't shut down completely!");
         }
         dataSource.close();
-    }
-
-    @Deprecated
-    // Build hashing functions that inspect only image and video content, ignoring metadata. An image is the same even
-    // if its timestamp changes, if the image data remains the same. Or... it might be good to know both.
-    public static String sha1(Path path) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-1");
-            DigestInputStream digester = new DigestInputStream(Files.newInputStream(path), md);
-            IOUtils.copy(digester, new NullOutputStream());
-            return Hex.encodeHexString(md.digest());
-        } catch (NoSuchAlgorithmException | IOException e) {
-//            throw new RuntimeException("Error while getting checksum for " + path, e);
-            System.out.println("Error while getting checksum for " + path);
-            e.printStackTrace();
-            // Need to keep going here, but how?
-            return "Failed to get checksum; file corrupt?";
-        }
     }
 }
