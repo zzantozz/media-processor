@@ -92,11 +92,11 @@ public class MainReconcileThings {
         db1 = knownDbs.stream()
                 .filter(db -> db.path.equals(catalog1Path))
                 .findFirst()
-                .orElse(new Db("some db", catalog1Path, (s) -> s));
+                .orElse(new Db("lhs", catalog1Path, (s) -> s));
         db2 = knownDbs.stream()
                 .filter(db -> db.path.equals(catalog2Path))
                 .findFirst()
-                .orElse(new Db("some db", catalog2Path, (s) -> s));
+                .orElse(new Db("rhs", catalog2Path, (s) -> s));
         try (final Connection connection1 = DriverManager.getConnection("jdbc:sqlite:" + db1.path);
              final Connection connection2 = DriverManager.getConnection("jdbc:sqlite:" + db2.path)) {
             PreparedStatement findFileInDb2Stmt = connection2.prepareStatement(

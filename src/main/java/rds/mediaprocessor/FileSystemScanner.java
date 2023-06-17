@@ -23,11 +23,11 @@ import java.util.stream.Stream;
  */
 public class FileSystemScanner {
     private final BasicDataSource dataSource;
-    private final FileEventBatcher fileEventBatcher;
+    private final FileEventInserter fileEventInserter;
 
-    public FileSystemScanner(BasicDataSource dataSource, FileEventBatcher fileEventBatcher) {
+    public FileSystemScanner(BasicDataSource dataSource, FileEventInserter fileEventInserter) {
         this.dataSource = dataSource;
-        this.fileEventBatcher = fileEventBatcher;
+        this.fileEventInserter = fileEventInserter;
     }
 
     public void scan(Path directory) throws Exception {
@@ -50,10 +50,10 @@ public class FileSystemScanner {
                                 String eventType = resultSet.getString(DbNames.FileEventTable.event_type);
                                 String sha1 = resultSet.getString(DbNames.FileEventTable.sha1);
                                 if (DbNames.EventTypes.delete.equals(eventType)) {
-                                    System.out.println(info.relPath + " is re-created");
+                                    System.out.println("File was re-created - " + info.relPath);
                                     fileEvent = new MainBuildCatalog.FileEvent(DbNames.EventTypes.create, info);
                                 } else if (!sha1.equals(info.sha1Hex)) {
-                                    System.out.println(info.relPath + " is updated");
+                                    System.out.println("File was updated - " + info.relPath);
                                     fileEvent = new MainBuildCatalog.FileEvent(DbNames.EventTypes.update, info);
                                 } else {
 //                                    System.out.println(info.relPath + " is seen before and unchanged");
@@ -64,16 +64,11 @@ public class FileSystemScanner {
                             }
                             resultSet.close();
                             if (fileEvent != null) {
-                                boolean offer = fileEventBatcher.getQueuedInserts().offer(fileEvent, 10, TimeUnit.SECONDS);
-                                if (!offer) {
-                                    throw new IllegalStateException("Failed to queue file info!");
-                                }
+                                fileEventInserter.addToBatch(fileEvent);
                                 MainBuildCatalog.Stats.insertsQueued.incrementAndGet();
                             }
                         } catch (SQLException e) {
                             throw new IllegalStateException("SQL failure", e);
-                        } catch (InterruptedException e) {
-                            throw new IllegalStateException("Unexpected interrupt", e);
                         }
                     });
         }

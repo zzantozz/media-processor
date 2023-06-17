@@ -45,8 +45,8 @@ public class IntegrationTest {
      * Some precalculated checksums of the strings used in test files here. For example, the first one is the checksum
      * of the string "v1".
      */
-    private static final String CHECKSUM_OF_V1 = "a1047eab1035d58682a53557e0b2a75edbfd15fd";
-    private static final String CHECKSUM_OF_V2 = "5a6df720540c20d95d530d3fd6885511223d5d20";
+    private static final String CHECKSUM_OF_V1 = "5a6df720540c20d95d530d3fd6885511223d5d20";
+    private static final String CHECKSUM_OF_V2 = "a1047eab1035d58682a53557e0b2a75edbfd15fd";
 
     /**
      * Settings to use for this test. Mainly this is for time-related things that will cause the tests to wait a long
@@ -125,9 +125,9 @@ public class IntegrationTest {
         String relPath = location1.relativize(testFile11).toString();
         assertThat(diff.path, equalTo(relPath));
         assertThat(diff.lhs.state, equalTo(EventTypes.update));
-        assertThat(diff.lhs.sha1, equalTo(CHECKSUM_OF_V1));
+        assertThat(diff.lhs.sha1, equalTo(CHECKSUM_OF_V2));
         assertThat(diff.rhs.state, equalTo(EventTypes.create));
-        assertThat(diff.rhs.sha1, equalTo(CHECKSUM_OF_V2));
+        assertThat(diff.rhs.sha1, equalTo(CHECKSUM_OF_V1));
     }
 
     @Test
@@ -147,8 +147,52 @@ public class IntegrationTest {
         String relPath = location2.relativize(testFile21).toString();
         assertThat(diff.path, equalTo(relPath));
         assertThat(diff.lhs.state, equalTo(EventTypes.create));
-        assertThat(diff.lhs.sha1, equalTo(CHECKSUM_OF_V2));
+        assertThat(diff.lhs.sha1, equalTo(CHECKSUM_OF_V1));
         assertThat(diff.rhs.state, equalTo(EventTypes.update));
+        assertThat(diff.rhs.sha1, equalTo(CHECKSUM_OF_V2));
+    }
+
+    @Test
+    void deletingOneFileInLeftDbIsNoticed() throws Exception {
+        // Given I've cataloged both locations in their initial states.
+        MainBuildCatalog.buildCatalog(location1, location1Db, settings);
+        MainBuildCatalog.buildCatalog(location2, location2Db, settings);
+
+        // When I delete a file on the left hand side and re-catalog it
+        FileUtils.delete(testFile11.toFile());
+        MainBuildCatalog.buildCatalog(location1, location1Db, settings);
+
+        // Then the difference is noted
+        List<MainReconcileThings.Diff> diffs = MainReconcileThings.reconcileCatalogs(location1Db, location2Db);
+        assertThat(diffs, hasSize(1));
+        MainReconcileThings.Diff diff = diffs.get(0);
+        String relPath = location1.relativize(testFile11).toString();
+        assertThat(diff.path, equalTo(relPath));
+        assertThat(diff.lhs.state, equalTo(EventTypes.delete));
+        assertThat(diff.lhs.sha1, equalTo(CHECKSUM_OF_V1));
+        assertThat(diff.rhs.state, equalTo(EventTypes.create));
+        assertThat(diff.rhs.sha1, equalTo(CHECKSUM_OF_V1));
+    }
+
+    @Test
+    void deletingOneFileInRightDbIsNoticed() throws Exception {
+        // Given I've cataloged both locations in their initial states.
+        MainBuildCatalog.buildCatalog(location1, location1Db, settings);
+        MainBuildCatalog.buildCatalog(location2, location2Db, settings);
+
+        // When I delete a file on the right hand side and re-catalog it
+        FileUtils.delete(testFile21.toFile());
+        MainBuildCatalog.buildCatalog(location2, location2Db, settings);
+
+        // Then the difference is noted
+        List<MainReconcileThings.Diff> diffs = MainReconcileThings.reconcileCatalogs(location1Db, location2Db);
+        assertThat(diffs, hasSize(1));
+        MainReconcileThings.Diff diff = diffs.get(0);
+        String relPath = location2.relativize(testFile21).toString();
+        assertThat(diff.path, equalTo(relPath));
+        assertThat(diff.lhs.state, equalTo(EventTypes.create));
+        assertThat(diff.lhs.sha1, equalTo(CHECKSUM_OF_V1));
+        assertThat(diff.rhs.state, equalTo(EventTypes.delete));
         assertThat(diff.rhs.sha1, equalTo(CHECKSUM_OF_V1));
     }
 }

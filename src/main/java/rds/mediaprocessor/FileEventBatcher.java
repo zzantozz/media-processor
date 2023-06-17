@@ -6,27 +6,53 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 import static rds.mediaprocessor.MainBuildCatalog.DB_BATCH_SIZE;
 
-public class FileEventBatcher implements Runnable {
+public class FileEventBatcher implements Runnable, FileEventInserter {
     private boolean inputsActive = true;
-    private final Connection connection;
-    private final PreparedStatement beginTxStatement;
-    private final PreparedStatement endTxStatement;
-    private final PreparedStatement insertStatement;
     private final int queueCapacity = DB_BATCH_SIZE + (DB_BATCH_SIZE / 10);
     private final BlockingQueue<MainBuildCatalog.FileEvent> queuedInserts = new LinkedBlockingQueue<>(queueCapacity);
     private final long insertTimestamp;
-    private int queuePollTimeoutMillis;
+    private final BasicDataSource dataSource;
+    private final int queuePollTimeoutMillis;
 
     public FileEventBatcher(long insertTimestamp, BasicDataSource dataSource, Map<String, String> settings) {
         this.insertTimestamp = insertTimestamp;
+        this.dataSource = dataSource;
         queuePollTimeoutMillis = Integer.parseInt(
                 settings.getOrDefault("FileEventBatcher.queuePollTimeoutMillis", "1000"));
+    }
+
+    @Override
+    public int getCurrentQueuedInserts() {
+        return queuedInserts.size();
+    }
+
+    public int getQueueCapacity() {
+        return queueCapacity;
+    }
+
+    @Override
+    public void addToBatch(MainBuildCatalog.FileEvent event) {
+        try {
+            boolean success = queuedInserts.offer(event, 10, TimeUnit.SECONDS);
+            if (!success) {
+                throw new IllegalStateException("No room on insert queue after waiting");
+            }
+        } catch (InterruptedException e) {
+            throw new IllegalStateException("Unexpected interrupt", e);
+        }
+    }
+
+    @Override
+    public void run() {
+        // Only create the connection here, so that if this thing isn't actually running, it doesn't connect.
+        final Connection connection;
+        final PreparedStatement beginTxStatement;
+        final PreparedStatement endTxStatement;
+        final PreparedStatement insertStatement;
         try {
             connection = dataSource.getConnection();
         } catch (SQLException e) {
@@ -41,18 +67,6 @@ public class FileEventBatcher implements Runnable {
         } catch (SQLException e) {
             throw new IllegalStateException("Error creating sql statements", e);
         }
-    }
-
-    public int getQueueCapacity() {
-        return queueCapacity;
-    }
-
-    public BlockingQueue<MainBuildCatalog.FileEvent> getQueuedInserts() {
-        return queuedInserts;
-    }
-
-    @Override
-    public void run() {
         while (true) {
             List<MainBuildCatalog.FileEvent> toHandle = new ArrayList<>();
             while (toHandle.size() < DB_BATCH_SIZE) {
@@ -100,10 +114,12 @@ public class FileEventBatcher implements Runnable {
                 double timeEach = elapsed / (double) toHandle.size();
                 System.out.println("Inserted " + toHandle.size() + " rows in " + elapsed + " ms (" + timeEach + " ms each)");
             } else {
-                System.out.println(getClass().getSimpleName() + " is idle!");
+//                System.out.println(getClass().getSimpleName() + " is idle!");
                 // It's tempting to put this in the while condition, but I want to make sure we only break from the loop
                 // after we've timed out waiting on the queue.
                 if (!inputsActive) {
+                    System.out.println(getClass().getSimpleName() + " terminating; total inserts: "
+                            + MainBuildCatalog.Stats.insertsCompleted);
                     break;
                 }
             }
@@ -113,6 +129,11 @@ public class FileEventBatcher implements Runnable {
         } catch (SQLException e) {
             throw new IllegalStateException("Error closing connection used for inserts", e);
         }
+    }
+
+    @Override
+    public void flush() {
+        throw new UnsupportedOperationException("Not yet written");
     }
 
     public void finishUp() {
